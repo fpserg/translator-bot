@@ -2,6 +2,7 @@ from googletrans import Translator
 from telebot.async_telebot import AsyncTeleBot
 import asyncio
 import html
+import re
 
 # Initialize bot with your token (replace with your actual token)
 bot = AsyncTeleBot("7974706119:AAHEl00bFRWD8qR5il7NMcFTx3huLbS1qN0", parse_mode="HTML")
@@ -50,21 +51,41 @@ def translate_text(text, dest_lang):
         return None
     
     try:
-        # Detect source language
+        # 1. Extract ALL URLs from the original text and store them
+        # This regex finds common URL patterns
+        url_pattern = r'(https?://[^\s]+|www\.[^\s]+)'
+        original_urls = re.findall(url_pattern, text)
+        # Create a placeholder for each URL to hide it from translator
+        placeholder = " @@URL_PLACEHOLDER@@ "
+        for i, url in enumerate(original_urls):
+            text = text.replace(url, f"{placeholder}{i}")
+
+        # 2. Detect source language and translate
         detected = translator.detect(text)
         source_lang = detected.lang
-        
-        # Perform translation
         translated = translator.translate(text, src=source_lang, dest=dest_lang)
         
-        # Escape HTML entities to preserve formatting
-        translated_text = html.escape(translated.text)
-        
+        # 3. Put the original URLs back into the translated text
+        translated_text = translated.text
+        for i, url in enumerate(original_urls):
+            # Use the placeholder to find where to reinsert the URL
+            search_pattern = re.escape(f"{placeholder}{i}")
+            # Replace placeholder with the original, properly formatted URL
+            translated_text = re.sub(search_pattern, url, translated_text)
+
+          # 4. Escape only the non-URL parts for HTML safety
+        # Simple approach: escape everything, then unescape the URLs
+        safe_text = html.escape(translated_text)
+        for url in original_urls:
+            # Re-insert the raw URL (which should not be HTML-escaped)
+            escaped_url = html.escape(url)
+            safe_text = safe_text.replace(escaped_url, url)
         return {
             'original': text,
-            'translated': translated_text,
+            'translated': safe_text,  # Now with working links
             'src_lang': source_lang,
-            'dest_lang': dest_lang
+            'dest_lang': dest_lang,
+            'urls_found': original_urls  # Optional: for debugging
         }
     except Exception as e:
         print(f"Translation error: {e}")
@@ -109,25 +130,22 @@ async def handle_text(message):
         await bot.reply_to(message, "Please send or forward a message with text content.")
         return
     
-    # Perform translation
+      # Perform translation (with URL preservation)
     translation_result = translate_text(text_content, TARGET_LANGUAGE)
-    
     if not translation_result:
         await bot.reply_to(message, "Sorry, I couldn't translate that message.")
         return
-    
+        
     # Prepare formatted response
     response_parts = []
-    
     if sender_info:
         response_parts.append(f"<i>{sender_info}</i>\n")
-    
     response_parts.append(f"<b>Translated ({translation_result['dest_lang']}):</b>")
-    response_parts.append(f"{translation_result['translated']}\n")
+    response_parts.append(f"{translation_result['translated']}\n")  # This now contains clickable links
     
     # Optional: Show original text (can be disabled)
-    response_parts.append(f"<i>Original ({translation_result['src_lang']}):</i>")
-    response_parts.append(f"<code>{html.escape(translation_result['original'][:200])}</code>")
+    # response_parts.append(f"<i>Original ({translation_result['src_lang']}):</i>")
+    # response_parts.append(f"<code>{html.escape(translation_result['original'][:200])}</code>")
     
     # Send the formatted response
     await bot.reply_to(message, "\n".join(response_parts))
