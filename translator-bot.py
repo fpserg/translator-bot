@@ -10,7 +10,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.filters.callback_data import CallbackData
-
+from typing import Any, Awaitable, Callable, Dict
 from Helpers.Translator import TranslateText
 from Helpers.YandexIAM import CreateIAMToken
 from Helpers.Detector import detect_language, list_languages
